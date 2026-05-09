@@ -1,0 +1,906 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Bot Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:        #0d0f14;
+      --surface:   #13161e;
+      --border:    #1f2430;
+      --accent:    #00e5a0;
+      --accent2:   #0087ff;
+      --danger:    #ff4d6d;
+      --warning:   #ffb547;
+      --text:      #e8eaf0;
+      --muted:     #5a607a;
+      --radius:    10px;
+      --mono:      'DM Mono', monospace;
+      --sans:      'Syne', sans-serif;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--sans);
+      min-height: 100vh;
+      display: grid;
+      grid-template-rows: 60px 1fr;
+      grid-template-columns: 220px 1fr;
+    }
+
+    /* ── Header ── */
+    header {
+      grid-column: 1 / -1;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      padding: 0 24px;
+      gap: 16px;
+    }
+
+    header h1 {
+      font-size: 15px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .status-pill {
+      margin-left: auto;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-family: var(--mono);
+      font-size: 12px;
+      padding: 5px 12px;
+      border-radius: 100px;
+      background: var(--border);
+      transition: background 0.3s;
+    }
+
+    .status-dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: var(--muted);
+      transition: background 0.3s;
+    }
+
+    .status-dot.connected  { background: var(--accent);  box-shadow: 0 0 8px var(--accent); }
+    .status-dot.connecting { background: var(--warning); animation: pulse 1s infinite; }
+    .status-dot.qr         { background: var(--accent2); animation: pulse 1s infinite; }
+    .status-dot.error      { background: var(--danger); }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.3; }
+    }
+
+    /* ── Sidebar ── */
+    nav {
+      background: var(--surface);
+      border-right: 1px solid var(--border);
+      padding: 24px 0;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .nav-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 20px;
+      font-size: 13px;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      cursor: pointer;
+      border-left: 3px solid transparent;
+      color: var(--muted);
+      transition: all 0.15s;
+      user-select: none;
+    }
+
+    .nav-item:hover { color: var(--text); background: rgba(255,255,255,0.03); }
+
+    .nav-item.active {
+      color: var(--accent);
+      border-left-color: var(--accent);
+      background: rgba(0,229,160,0.06);
+    }
+
+    .nav-icon { font-size: 16px; }
+
+    /* ── Main panels ── */
+    main {
+      overflow-y: auto;
+      padding: 28px;
+    }
+
+    .panel { display: none; }
+    .panel.active { display: block; }
+
+    /* ── Section heading ── */
+    .section-title {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 18px;
+    }
+
+    /* ── Card ── */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 20px;
+      margin-bottom: 16px;
+    }
+
+    /* ── QR View ── */
+    #qr-panel {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 60vh;
+      gap: 20px;
+      text-align: center;
+    }
+
+    #qr-panel h2 { font-size: 22px; font-weight: 800; }
+    #qr-panel p  { color: var(--muted); font-size: 14px; max-width: 320px; line-height: 1.6; }
+
+    #qr-image {
+      background: white;
+      padding: 16px;
+      border-radius: 12px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 240px;
+      min-height: 240px;
+    }
+
+    #qr-image canvas { display: block !important; }
+    #qr-image img { display: none !important; }
+    #qr-placeholder { color: #999; font-size: 13px; }
+
+    .spinner {
+      width: 32px; height: 32px;
+      border: 3px solid var(--border);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Excel Editor ── */
+    .toolbar {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 16px;
+      flex-wrap: wrap;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 7px 14px;
+      border-radius: 6px;
+      font-family: var(--sans);
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      cursor: pointer;
+      border: 1px solid transparent;
+      transition: all 0.15s;
+    }
+
+    .btn-primary {
+      background: var(--accent);
+      color: #000;
+      border-color: var(--accent);
+    }
+    .btn-primary:hover { filter: brightness(1.1); }
+
+    .btn-outline {
+      background: transparent;
+      color: var(--text);
+      border-color: var(--border);
+    }
+    .btn-outline:hover { border-color: var(--muted); }
+
+    .btn-danger {
+      background: transparent;
+      color: var(--danger);
+      border-color: var(--danger);
+    }
+    .btn-danger:hover { background: rgba(255,77,109,0.1); }
+
+    .btn-sm { padding: 4px 9px; font-size: 11px; }
+
+    .search-box {
+      margin-left: auto;
+      background: var(--border);
+      border: 1px solid transparent;
+      border-radius: 6px;
+      padding: 7px 12px;
+      color: var(--text);
+      font-family: var(--mono);
+      font-size: 12px;
+      outline: none;
+      width: 200px;
+      transition: border-color 0.15s;
+    }
+
+    .search-box:focus { border-color: var(--accent); }
+    .search-box::placeholder { color: var(--muted); }
+
+    /* ── Table ── */
+    .table-wrap {
+      overflow-x: auto;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+
+    thead {
+      background: rgba(255,255,255,0.03);
+      position: sticky;
+      top: 0;
+    }
+
+    th {
+      text-align: left;
+      padding: 11px 16px;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--muted);
+      border-bottom: 1px solid var(--border);
+      white-space: nowrap;
+    }
+
+    td {
+      padding: 10px 16px;
+      border-bottom: 1px solid rgba(31,36,48,0.7);
+      font-family: var(--mono);
+      font-size: 12px;
+      vertical-align: middle;
+    }
+
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: rgba(255,255,255,0.02); }
+
+    /* Inline editing */
+    td.editable {
+      cursor: text;
+      position: relative;
+    }
+
+    td.editable:hover::after {
+      content: '✎';
+      position: absolute;
+      right: 8px;
+      top: 50%; transform: translateY(-50%);
+      color: var(--muted);
+      font-size: 11px;
+    }
+
+    td input[type="text"] {
+      background: var(--bg);
+      border: 1px solid var(--accent);
+      border-radius: 4px;
+      color: var(--text);
+      font-family: var(--mono);
+      font-size: 12px;
+      padding: 3px 7px;
+      width: 100%;
+      outline: none;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 3px 9px;
+      border-radius: 100px;
+      font-size: 11px;
+      font-weight: 600;
+      font-family: var(--mono);
+    }
+
+    .badge-false  { background: rgba(0,229,160,0.12); color: var(--accent); }
+    .badge-true   { background: rgba(255,77,109,0.12); color: var(--danger); }
+
+    .actions { display: flex; gap: 6px; white-space: nowrap; }
+
+    .empty-state {
+      text-align: center;
+      padding: 48px 0;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    /* ── Add Row Modal ── */
+    .overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.6);
+      backdrop-filter: blur(4px);
+      z-index: 100;
+      align-items: center;
+      justify-content: center;
+    }
+    .overlay.open { display: flex; }
+
+    .modal {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 28px;
+      width: 360px;
+      max-width: 90vw;
+    }
+
+    .modal h3 { font-size: 16px; font-weight: 700; margin-bottom: 20px; }
+
+    .form-group { margin-bottom: 16px; }
+
+    .form-group label {
+      display: block;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 6px;
+    }
+
+    .form-group input, .form-group select {
+      width: 100%;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text);
+      font-family: var(--mono);
+      font-size: 13px;
+      padding: 9px 12px;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+
+    .form-group input:focus, .form-group select:focus {
+      border-color: var(--accent);
+    }
+
+    .form-group select option { background: var(--surface); }
+
+    .modal-actions { display: flex; gap: 10px; margin-top: 20px; justify-content: flex-end; }
+
+    /* ── Logs ── */
+    .log-list { display: flex; flex-direction: column; gap: 8px; }
+
+    .log-entry {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 12px 16px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      font-family: var(--mono);
+      font-size: 12px;
+      transition: border-color 0.15s;
+    }
+
+    .log-entry:hover { border-color: var(--muted); }
+
+    .log-time { color: var(--muted); min-width: 170px; }
+    .log-vehicle { color: var(--accent); font-weight: 500; }
+    .log-group { color: var(--muted); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .log-none { color: var(--danger); }
+
+    /* ── Toast ── */
+    #toast {
+      position: fixed;
+      bottom: 24px; right: 24px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 12px 18px;
+      font-size: 13px;
+      display: none;
+      align-items: center;
+      gap: 10px;
+      z-index: 200;
+      animation: slideUp 0.2s ease;
+    }
+
+    #toast.show { display: flex; }
+    #toast.success { border-color: var(--accent); color: var(--accent); }
+    #toast.error   { border-color: var(--danger);  color: var(--danger);  }
+
+    @keyframes slideUp {
+      from { transform: translateY(10px); opacity: 0; }
+      to   { transform: translateY(0);    opacity: 1; }
+    }
+
+    /* ── Connecting splash ── */
+    #connecting-panel {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 60vh;
+      gap: 16px;
+      color: var(--muted);
+      font-size: 14px;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ── Header ── -->
+  <header>
+    <span style="font-size:20px">📦</span>
+    <h1>Delivery Bot</h1>
+    <div class="status-pill">
+      <div class="status-dot" id="statusDot"></div>
+      <span id="statusText">connecting...</span>
+    </div>
+  </header>
+
+  <!-- ── Sidebar ── -->
+  <nav>
+    <div class="nav-item active" data-panel="vehicles" onclick="switchPanel('vehicles', this)">
+      <span class="nav-icon">🚚</span> Vehicles
+    </div>
+    <div class="nav-item" data-panel="logs" onclick="switchPanel('logs', this)">
+      <span class="nav-icon">📋</span> Activity Log
+    </div>
+  </nav>
+
+  <!-- ── Main ── -->
+  <main>
+
+    <!-- Connecting splash -->
+    <div id="connecting-panel" class="active">
+      <div class="spinner"></div>
+      <span>Connecting to bot...</span>
+    </div>
+
+    <!-- QR code panel (shown when bot needs scanning) -->
+    <div id="qr-panel" style="display:none">
+      <h2>Scan to Connect</h2>
+      <p>Open WhatsApp → Linked Devices → Link a device, then scan the code below.</p>
+      <div id="qr-image">
+        <span id="qr-placeholder">Waiting for QR...</span>
+        <div id="qrCanvas" style="display:none"></div>
+      </div>
+    </div>
+
+    <!-- Vehicles panel (shown when connected) -->
+    <div id="vehicles-panel" class="panel" style="display:none">
+      <p class="section-title">Vehicle Registry — vehicle_list.xlsx</p>
+
+      <div class="toolbar">
+        <button class="btn btn-primary" onclick="openAddModal()">＋ Add Vehicle</button>
+        <button class="btn btn-outline" onclick="loadRows()">↻ Refresh</button>
+        <input class="search-box" id="searchBox" placeholder="Search vehicles…" oninput="renderTable()" />
+      </div>
+
+      <div class="table-wrap">
+        <table id="vehicleTable">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Vehicle Number</th>
+              <th>Status</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="tableBody">
+            <tr><td colspan="4"><div class="empty-state">Loading…</div></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Logs panel -->
+    <div id="logs-panel" class="panel" style="display:none">
+      <p class="section-title">Recent Dispatches</p>
+      <div id="logList" class="log-list">
+        <div class="empty-state">No activity yet.</div>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- ── Add / Edit Modal ── -->
+  <div class="overlay" id="modal">
+    <div class="modal">
+      <h3 id="modalTitle">Add Vehicle</h3>
+      <div class="form-group">
+        <label>Vehicle Number</label>
+        <input type="text" id="inputVehicle" placeholder="e.g. BOGURA-1234" />
+      </div>
+      <div class="form-group">
+        <label>Status</label>
+        <select id="inputAccepted">
+          <option value="false">Available (FALSE)</option>
+          <option value="true">Accepted (TRUE)</option>
+        </select>
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
+        <button class="btn btn-primary" id="modalSaveBtn" onclick="saveModal()">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Toast ── -->
+  <div id="toast"></div>
+
+  <script>
+    // ───────────────────────────────────────────────────────────────────────
+    // State
+    // ───────────────────────────────────────────────────────────────────────
+
+    let rows = [];
+    let editingIndex = null;
+    let lastStatus = null;
+    let connected = false;
+
+    // ───────────────────────────────────────────────────────────────────────
+    // Panel / nav
+    // ───────────────────────────────────────────────────────────────────────
+
+    function switchPanel(name, el) {
+      document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+      el.classList.add('active');
+
+      document.querySelectorAll('#vehicles-panel, #logs-panel').forEach(p => p.style.display = 'none');
+
+      const target = document.getElementById(name + '-panel');
+      if (target) {
+        target.style.display = 'block';
+        if (name === 'logs') loadLogs();
+      }
+    }
+
+    // ───────────────────────────────────────────────────────────────────────
+    // Bot status polling
+    // ───────────────────────────────────────────────────────────────────────
+
+    function updateStatusUI(status, qr) {
+      const dot  = document.getElementById('statusDot');
+      const text = document.getElementById('statusText');
+
+      dot.className = 'status-dot';
+      text.textContent = status;
+
+      const cp  = document.getElementById('connecting-panel');
+      const qrP = document.getElementById('qr-panel');
+      const vP  = document.getElementById('vehicles-panel');
+      const lP  = document.getElementById('logs-panel');
+
+      const activePanel = document.querySelector('.nav-item.active')?.dataset?.panel;
+
+      if (status === 'qr') {
+        dot.classList.add('qr');
+        cp.style.display  = 'none';
+        qrP.style.display = 'flex';
+        vP.style.display  = 'none';
+        lP.style.display  = 'none';
+        renderQR(qr);
+        connected = false;
+      } else if (status === 'connected' || status === 'online') {
+        dot.classList.add('connected');
+        cp.style.display  = 'none';
+        qrP.style.display = 'none';
+        if (!connected) {
+          // First time connecting — show vehicles
+          connected = true;
+          loadRows();
+          vP.style.display = 'block';
+          lP.style.display = 'none';
+          // reset nav
+          document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+          document.querySelector('[data-panel="vehicles"]').classList.add('active');
+        } else {
+          // Already connected — respect current tab
+          if (activePanel === 'vehicles') vP.style.display = 'block';
+          else if (activePanel === 'logs')  lP.style.display  = 'block';
+        }
+      } else if (status === 'connecting' || status === 'reconnecting') {
+        dot.classList.add('connecting');
+        cp.style.display  = 'flex';
+        qrP.style.display = 'none';
+        vP.style.display  = 'none';
+        lP.style.display  = 'none';
+        connected = false;
+      } else {
+        // starting / logged_out
+        cp.style.display  = 'flex';
+        qrP.style.display = 'none';
+        vP.style.display  = 'none';
+        lP.style.display  = 'none';
+        connected = false;
+      }
+
+      lastStatus = status;
+    }
+
+    async function pollStatus() {
+      try {
+        const res  = await fetch('/api/status');
+        const data = await res.json();
+        console.log('[poll]', data.status, data.qr ? 'QR length:' + data.qr.length : 'no QR');
+        if (data.status !== lastStatus || data.qr !== lastQR) {
+          updateStatusUI(data.status, data.qr);
+        }
+      } catch (_) {}
+    }
+
+    setInterval(pollStatus, 2000);
+    pollStatus();
+
+    // ───────────────────────────────────────────────────────────────────────
+    // QR rendering
+    // ───────────────────────────────────────────────────────────────────────
+
+    let lastQR = null;
+
+    function renderQR(qr) {
+      if (!qr) return;
+      lastQR = qr;
+
+      const container = document.getElementById('qrCanvas');
+      const ph        = document.getElementById('qr-placeholder');
+
+      ph.style.display = 'none';
+
+      // Clear old render
+      container.innerHTML = '';
+      container.style.display = 'block';
+
+      // Use QRCode.js — it appends a <canvas> (desktop) or <img> (some browsers)
+      try {
+        new QRCode(container, {
+          text:         qr,
+          width:        200,
+          height:       200,
+          colorDark:    '#000000',
+          colorLight:   '#ffffff',
+          correctLevel: QRCode.CorrectLevel.M,
+        });
+      } catch(e) {
+        // Fallback: show raw text so user can at least see something went wrong
+        container.innerHTML = '<p style="color:red;font-size:11px;word-break:break-all;max-width:200px">QR error: ' + e.message + '</p>';
+      }
+    }
+
+    // ───────────────────────────────────────────────────────────────────────
+    // Excel rows
+    // ───────────────────────────────────────────────────────────────────────
+
+    async function loadRows() {
+      try {
+        const res = await fetch('/api/rows');
+        rows = await res.json();
+        renderTable();
+      } catch (_) {
+        toast('Failed to load rows', 'error');
+      }
+    }
+
+    function renderTable() {
+      const q    = document.getElementById('searchBox')?.value?.toLowerCase() || '';
+      const body = document.getElementById('tableBody');
+
+      const filtered = rows
+        .map((r, i) => ({ r, i }))
+        .filter(({ r }) =>
+          String(r.vehicle_number).toLowerCase().includes(q) ||
+          String(r.isAccepted).toLowerCase().includes(q)
+        );
+
+      if (!filtered.length) {
+        body.innerHTML = `<tr><td colspan="4"><div class="empty-state">No vehicles found.</div></td></tr>`;
+        return;
+      }
+
+      body.innerHTML = filtered.map(({ r, i }) => {
+        const accepted   = String(r.isAccepted).trim().toUpperCase() === 'TRUE';
+        const badgeClass = accepted ? 'badge-true' : 'badge-false';
+        const badgeLabel = accepted ? '✕ Accepted' : '✓ Available';
+        return `
+          <tr>
+            <td style="color:var(--muted)">${i + 1}</td>
+            <td class="editable" id="cell-${i}"
+                ondblclick="startInlineEdit(${i}, this)">${escHtml(String(r.vehicle_number))}</td>
+            <td>
+              <span class="badge ${badgeClass}">${badgeLabel}</span>
+            </td>
+            <td>
+              <div class="actions">
+                <button class="btn btn-outline btn-sm"
+                  onclick="toggleAccepted(${i})">${accepted ? 'Mark Available' : 'Mark Accepted'}</button>
+                <button class="btn btn-danger btn-sm"
+                  onclick="confirmDelete(${i})">Delete</button>
+              </div>
+            </td>
+          </tr>`;
+      }).join('');
+    }
+
+    function escHtml(str) {
+      return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    }
+
+    // ── Inline vehicle-number edit ────────────────────────────────────────
+
+    function startInlineEdit(index, cell) {
+      if (cell.querySelector('input')) return; // already editing
+      const current = rows[index].vehicle_number;
+      cell.innerHTML = `<input type="text" value="${escHtml(String(current))}"
+        onblur="commitInlineEdit(${index}, this)"
+        onkeydown="if(event.key==='Enter') this.blur(); if(event.key==='Escape') cancelInlineEdit(${index}, this);" />`;
+      cell.querySelector('input').focus();
+    }
+
+    async function commitInlineEdit(index, input) {
+      const newVal = input.value.trim();
+      if (!newVal || newVal === String(rows[index].vehicle_number)) {
+        renderTable(); return;
+      }
+      await patchRow(index, { vehicle_number: newVal });
+    }
+
+    function cancelInlineEdit(index, input) {
+      renderTable();
+    }
+
+    // ── Toggle ────────────────────────────────────────────────────────────
+
+    async function toggleAccepted(index) {
+      const current = String(rows[index].isAccepted).trim().toUpperCase() === 'TRUE';
+      await patchRow(index, { isAccepted: !current });
+    }
+
+    // ── Delete ────────────────────────────────────────────────────────────
+
+    function confirmDelete(index) {
+      if (confirm(`Delete "${rows[index].vehicle_number}"?`)) deleteRow(index);
+    }
+
+    async function deleteRow(index) {
+      try {
+        const res = await fetch(`/api/rows/${index}`, { method: 'DELETE' });
+        if (!res.ok) throw new Error((await res.json()).error);
+        toast('Row deleted', 'success');
+        await loadRows();
+      } catch (e) {
+        toast(e.message, 'error');
+      }
+    }
+
+    async function patchRow(index, fields) {
+      try {
+        const res = await fetch(`/api/rows/${index}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(fields),
+        });
+        if (!res.ok) throw new Error((await res.json()).error);
+        toast('Saved ✓', 'success');
+        await loadRows();
+      } catch (e) {
+        toast(e.message, 'error');
+      }
+    }
+
+    // ───────────────────────────────────────────────────────────────────────
+    // Add modal
+    // ───────────────────────────────────────────────────────────────────────
+
+    function openAddModal() {
+      editingIndex = null;
+      document.getElementById('modalTitle').textContent = 'Add Vehicle';
+      document.getElementById('inputVehicle').value  = '';
+      document.getElementById('inputAccepted').value = 'false';
+      document.getElementById('modal').classList.add('open');
+    }
+
+    function closeModal() {
+      document.getElementById('modal').classList.remove('open');
+      editingIndex = null;
+    }
+
+    async function saveModal() {
+      const vehicle  = document.getElementById('inputVehicle').value.trim();
+      const accepted = document.getElementById('inputAccepted').value === 'true';
+
+      if (!vehicle) { toast('Vehicle number required', 'error'); return; }
+
+      try {
+        const res = await fetch('/api/rows', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ vehicle_number: vehicle, isAccepted: accepted }),
+        });
+        if (!res.ok) throw new Error((await res.json()).error);
+        toast('Vehicle added ✓', 'success');
+        closeModal();
+        await loadRows();
+      } catch (e) {
+        toast(e.message, 'error');
+      }
+    }
+
+    // Close modal on overlay click
+    document.getElementById('modal').addEventListener('click', (e) => {
+      if (e.target === document.getElementById('modal')) closeModal();
+    });
+
+    // ───────────────────────────────────────────────────────────────────────
+    // Logs
+    // ───────────────────────────────────────────────────────────────────────
+
+    async function loadLogs() {
+      try {
+        const res  = await fetch('/api/logs');
+        const logs = await res.json();
+        const el   = document.getElementById('logList');
+
+        if (!logs.length) {
+          el.innerHTML = '<div class="empty-state">No activity yet.</div>';
+          return;
+        }
+
+        el.innerHTML = logs.map(l => `
+          <div class="log-entry">
+            <span class="log-time">${l.time.replace('T', ' ').replace('Z','').slice(0,19)}</span>
+            <span class="${l.vehicle ? 'log-vehicle' : 'log-none'}">${l.vehicle ?? 'none'}</span>
+            <span class="log-group">${l.group ?? ''}</span>
+          </div>`).join('');
+      } catch (_) {}
+    }
+
+    // ───────────────────────────────────────────────────────────────────────
+    // Toast
+    // ───────────────────────────────────────────────────────────────────────
+
+    let toastTimer = null;
+
+    function toast(msg, type = 'success') {
+      const el = document.getElementById('toast');
+      el.textContent = msg;
+      el.className   = `show ${type}`;
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => el.className = '', 2800);
+    }
+  </script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+</body>
+</html>
