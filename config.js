@@ -1,7 +1,5 @@
-// ─── Bot Configuration ────────────────────────────────────────────────────────
+if (!process.env.ADMIN_JID)     throw new Error('Missing ADMIN_JID in .env');
+if (!process.env.ALLOWED_GROUP) throw new Error('Missing ALLOWED_GROUP in .env');
 
-export const ALLOWED_GROUPS = new Set([
-  "120363428027092280@g.us",
-]);
-
-export const ADMIN = "60581285478628@lid";
+export const ALLOWED_GROUPS = new Set([process.env.ALLOWED_GROUP]);
+export const ADMIN = process.env.ADMIN_JID;

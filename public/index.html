@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Bot Dashboard</title>
+  <title>WhatsApp Bot Dashboard</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet" />
   <style>
@@ -464,7 +464,10 @@
   <header>
     <span style="font-size:20px">📦</span>
     <h1>Delivery Bot</h1>
-    <div class="status-pill">
+    <form method="POST" action="/logout" style="margin-left:auto;margin-right:12px">
+      <button type="submit" style="background:transparent;border:1px solid #1f2430;color:#5a607a;border-radius:6px;padding:5px 12px;font-family:Syne,sans-serif;font-size:12px;cursor:pointer;">Sign out</button>
+    </form>
+    <div class="status-pill" style="margin-left:0">
       <div class="status-dot" id="statusDot"></div>
       <span id="statusText">connecting...</span>
     </div>
@@ -501,7 +504,7 @@
 
     <!-- Vehicles panel (shown when connected) -->
     <div id="vehicles-panel" class="panel" style="display:none">
-      <p class="section-title">Vehicle Registry — vehicle_list.xlsx</p>
+      <p class="section-title">Vehicle Registry — answers.xlsx</p>
 
       <div class="toolbar">
         <button class="btn btn-primary" onclick="openAddModal()">＋ Add Vehicle</button>

@@ -90,7 +90,7 @@ export async function startBot() {
       await handleAdminCommand(sock, jid, msg, text.toLowerCase());
       return;
     }
-
+console.log("GROUP JID:", jid);
     if (!isBotEnabled()) return;
     if (!ALLOWED_GROUPS.has(jid)) return;
     if (!isDeliveryMessage(text)) return;
