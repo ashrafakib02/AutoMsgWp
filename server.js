@@ -4,8 +4,9 @@ import "dotenv/config";
 import express from "express";
 import cookieParser from "cookie-parser";
 import crypto from "crypto";
+import fs from "fs";
 import { startBot } from "./index.js";
-import { getBotState } from "./state.js";
+import { getBotState, setBotState } from "./state.js";
 import { getLogs } from "./logger.js";
 import { getRows, addRow, updateRow, deleteRow } from "./excelManager.js";
 
@@ -149,10 +150,24 @@ app.post("/login", (req, res) => {
   res.redirect("/login?err=1");
 });
 
-app.post("/logout", (req, res) => {
+app.post("/logout", async (req, res) => {
   sessions.delete(req.cookies?.session);
   res.clearCookie("session");
   res.redirect("/login");
+});
+
+app.post("/logout-unlink", (req, res) => {
+  try {
+    fs.rmSync("./auth", { recursive: true, force: true });
+    console.log("🗑️  Auth folder deleted — bot will need to re-scan QR");
+  } catch (err) {
+    console.error("❌ Failed to delete auth folder:", err.message);
+  }
+  sessions.delete(req.cookies?.session);
+  res.clearCookie("session");
+  res.json({ success: true });
+  // Small delay to ensure auth folder is fully deleted before bot restarts
+  setTimeout(() => startBot(), 500);
 });
 
 // ── Protected routes ──────────────────────────────────────────────────────────

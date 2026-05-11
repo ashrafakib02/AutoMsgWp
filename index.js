@@ -8,109 +8,153 @@ import {
 import { Boom } from "@hapi/boom";
 import P from "pino";
 import { isDeliveryMessage } from "./parser.js";
-import { loadRows, getFirstAvailableVehicle } from "./excelManager.js";
+import { loadRows, getFirstAvailableVehicle, setActiveFile } from "./excelManager.js";
 import { ALLOWED_GROUPS, ADMIN } from "./config.js";
 import { logEvent } from "./logger.js";
 import { setBotState, isBotEnabled, setBotEnabled } from "./state.js";
 
+// ── Single socket instance ────────────────────────────────────────────────────
+// Keeping a reference lets us close the old socket before creating a new one,
+// preventing multiple simultaneous connections that cause reconnect loops.
+
+let currentSock = null;
+let _isStarting  = false;
+
 export async function startBot() {
-  const { state, saveCreds } = await useMultiFileAuthState("auth");
+  // Prevent overlapping startBot calls
+  if (_isStarting) {
+    console.log("⚠️  startBot already in progress — skipping");
+    return;
+  }
+  _isStarting = true;
 
-  const sock = makeWASocket({
-    auth: state,
-    logger: P({ level: "silent" }),
-  });
+  // Close previous socket cleanly before opening a new one
+  if (currentSock) {
+    try { currentSock.end(); } catch (_) {}
+    currentSock = null;
+  }
 
-  sock.ev.on("creds.update", saveCreds);
+  try {
+    const { state, saveCreds } = await useMultiFileAuthState("auth");
 
-  // ── Connection state machine ─────────────────────────────────────────────
+    const sock = makeWASocket({
+      auth: state,
+      logger: P({ level: "silent" }),
+    });
 
-  sock.ev.on("connection.update", (update) => {
-    const { connection, lastDisconnect, qr, isOnline } = update;
+    currentSock = sock;
+    _isStarting  = false;
 
-    if (qr) {
-      setBotState({ status: "qr", qr });
-      console.log("📱 QR code generated — scan with WhatsApp");
-    }
+    sock.ev.on("creds.update", saveCreds);
 
-    if (connection === "connecting") {
-      setBotState({ status: "connecting" });
-    }
+    // ── Connection state machine ───────────────────────────────────────────
 
-    if (connection === "open") {
-      setBotState({ status: "connected", qr: null, connected: true });
-      console.log("✅ Bot connected");
-    }
+    sock.ev.on("connection.update", (update) => {
+      const { connection, lastDisconnect, qr, isOnline } = update;
 
-    if (isOnline) {
-      setBotState({ status: "online", connected: true });
-    }
-
-    if (connection === "close") {
-      const statusCode = new Boom(lastDisconnect?.error)?.output?.statusCode;
-      const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
-
-      setBotState({
-        status: shouldReconnect ? "reconnecting" : "logged_out",
-        qr: null,
-        connected: false,
-      });
-
-      console.log(`🔴 Connection closed (${shouldReconnect ? "reconnecting" : "logged out"})`);
-
-      if (shouldReconnect) {
-        setTimeout(startBot, 3000); // brief delay before reconnect
+      if (qr) {
+        setBotState({ status: "qr", qr });
+        console.log("📱 QR code generated — scan with WhatsApp");
       }
-    }
-  });
 
-  // ── Message handler ──────────────────────────────────────────────────────
+      if (connection === "connecting") {
+        setBotState({ status: "connecting" });
+      }
 
-  sock.ev.on("messages.upsert", async ({ messages }) => {
-    const msg = messages[0];
-    if (!msg.message || msg.key.fromMe) return;
+      if (connection === "open") {
+        setBotState({ status: "connected", qr: null, connected: true });
+        console.log("✅ Bot connected");
 
-    const jid    = msg.key.remoteJid;
-    const sender = msg.key.participant || jid;
-    const message = msg.message;
+        // Get connected phone number and switch to user-specific Excel file
+        try {
+          const phone = sock.user?.id?.split(":")[0] || sock.user?.id?.split("@")[0];
+          if (phone) {
+            console.log(`📱 Connected as: ${phone}`);
+            setActiveFile(phone);
+          }
+        } catch (err) {
+          console.error("❌ Could not get phone number:", err.message);
+        }
+      }
 
-    const text =
-      message?.conversation ||
-      message?.extendedTextMessage?.text ||
-      message?.imageMessage?.caption ||
-      message?.videoMessage?.caption ||
-      message?.buttonsResponseMessage?.selectedButtonId ||
-      message?.listResponseMessage?.singleSelectReply?.selectedRowId ||
-      "";
+      if (isOnline) {
+        setBotState({ status: "online", connected: true });
+      }
 
-    if (!text) return;
+      if (connection === "close") {
+        const statusCode = new Boom(lastDisconnect?.error)?.output?.statusCode;
+        const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
 
-    // ── Admin commands ─────────────────────────────────────────────────────
-    if (sender === ADMIN && text.startsWith("/")) {
-      await handleAdminCommand(sock, jid, msg, text.toLowerCase());
-      return;
-    }
-console.log("GROUP JID:", jid);
-    if (!isBotEnabled()) return;
-    if (!ALLOWED_GROUPS.has(jid)) return;
-    if (!isDeliveryMessage(text)) return;
+        setBotState({
+          status: shouldReconnect ? "reconnecting" : "logged_out",
+          qr: null,
+          connected: false,
+        });
 
-    // ── Dispatch vehicle ───────────────────────────────────────────────────
-    const vehicle = getFirstAvailableVehicle();
-    console.log("🚚 Vehicle dispatched:", vehicle ?? "none available");
+        console.log(`🔴 Connection closed (${shouldReconnect ? "reconnecting" : "logged out"})`);
 
-    if (vehicle) {
-      await sock.sendMessage(jid, { text: vehicle }, { quoted: msg });
-      logEvent({ vehicle, group: jid, sender });
-    } else {
-      await sock.sendMessage(
-        jid,
-        { text: "No vehicle available right now." },
-        { quoted: msg }
-      );
-      logEvent({ vehicle: null, group: jid, sender, note: "none available" });
-    }
-  });
+        // Only reconnect if this is still the active socket
+        if (shouldReconnect && sock === currentSock) {
+          currentSock = null;
+          setTimeout(startBot, 3000);
+        }
+      }
+    });
+
+    // ── Message handler ────────────────────────────────────────────────────
+
+    sock.ev.on("messages.upsert", async ({ messages }) => {
+      const msg = messages[0];
+      if (!msg.message || msg.key.fromMe) return;
+
+      const jid     = msg.key.remoteJid;
+      const sender  = msg.key.participant || jid;
+      const message = msg.message;
+
+      const text =
+        message?.conversation ||
+        message?.extendedTextMessage?.text ||
+        message?.imageMessage?.caption ||
+        message?.videoMessage?.caption ||
+        message?.buttonsResponseMessage?.selectedButtonId ||
+        message?.listResponseMessage?.singleSelectReply?.selectedRowId ||
+        "";
+
+      if (!text) return;
+
+      // ── Admin commands ───────────────────────────────────────────────────
+      if (sender === ADMIN && text.startsWith("/")) {
+        await handleAdminCommand(sock, jid, msg, text.toLowerCase());
+        return;
+      }
+
+      if (!isBotEnabled()) return;
+      if (!ALLOWED_GROUPS.has(jid)) return;
+      if (!isDeliveryMessage(text)) return;
+
+      // ── Dispatch vehicle ─────────────────────────────────────────────────
+      const vehicle = getFirstAvailableVehicle();
+      console.log("🚚 Vehicle dispatched:", vehicle ?? "none available");
+
+      if (vehicle) {
+        await sock.sendMessage(jid, { text: vehicle }, { quoted: msg });
+        logEvent({ vehicle, group: jid, sender });
+      } else {
+        await sock.sendMessage(
+          jid,
+          { text: "No vehicle available right now." },
+          { quoted: msg }
+        );
+        logEvent({ vehicle: null, group: jid, sender, note: "none available" });
+      }
+    });
+
+  } catch (err) {
+    console.error("❌ startBot error:", err.message);
+    _isStarting  = false;
+    currentSock = null;
+    setTimeout(startBot, 5000); // retry after error
+  }
 }
 
 // ── Admin command handler ──────────────────────────────────────────────────────
@@ -118,19 +162,8 @@ console.log("GROUP JID:", jid);
 async function handleAdminCommand(sock, jid, msg, cmd) {
   const reply = (text) => sock.sendMessage(jid, { text }, { quoted: msg });
 
-  if (cmd === "/status") {
-    return reply(`Bot: ${isBotEnabled() ? "ON ✅" : "OFF ❌"}`);
-  }
-  if (cmd === "/pause") {
-    setBotEnabled(false);
-    return reply("Bot paused ❌");
-  }
-  if (cmd === "/resume") {
-    setBotEnabled(true);
-    return reply("Bot resumed ✅");
-  }
-  if (cmd === "/reload") {
-    loadRows();
-    return reply("Excel reloaded 🔄");
-  }
+  if (cmd === "/status") return reply(`Bot: ${isBotEnabled() ? "ON ✅" : "OFF ❌"}`);
+  if (cmd === "/pause")  { setBotEnabled(false); return reply("Bot paused ❌"); }
+  if (cmd === "/resume") { setBotEnabled(true);  return reply("Bot resumed ✅"); }
+  if (cmd === "/reload") { loadRows(); return reply("Excel reloaded 🔄"); }
 }

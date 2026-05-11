@@ -464,9 +464,10 @@
   <header>
     <span style="font-size:20px">📦</span>
     <h1>Delivery Bot</h1>
-    <form method="POST" action="/logout" style="margin-left:auto;margin-right:12px">
-      <button type="submit" style="background:transparent;border:1px solid #1f2430;color:#5a607a;border-radius:6px;padding:5px 12px;font-family:Syne,sans-serif;font-size:12px;cursor:pointer;">Sign out</button>
-    </form>
+    <button onclick="document.getElementById('signoutModal').classList.add('open')"
+      style="margin-left:auto;margin-right:12px;background:transparent;border:1px solid #1f2430;color:#5a607a;border-radius:6px;padding:5px 12px;font-family:Syne,sans-serif;font-size:12px;cursor:pointer;">
+      Sign out
+    </button>
     <div class="status-pill" style="margin-left:0">
       <div class="status-dot" id="statusDot"></div>
       <span id="statusText">connecting...</span>
@@ -581,6 +582,31 @@
       <div class="modal-actions">
         <button class="btn btn-outline" onclick="closeEditModal()">Cancel</button>
         <button class="btn btn-primary" onclick="saveEdit()">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Sign Out Modal ── -->
+  <div class="overlay" id="signoutModal">
+    <div class="modal">
+      <h3>Sign Out</h3>
+      <p style="color:var(--muted);font-size:13px;margin-top:8px;line-height:1.6">
+        How would you like to sign out?
+      </p>
+      <div style="display:flex;flex-direction:column;gap:10px;margin-top:20px">
+        <form method="POST" action="/logout">
+          <button type="submit" class="btn btn-outline" style="width:100%;justify-content:center">
+            Sign out only
+          </button>
+        </form>
+        <button type="button" class="btn btn-danger" style="width:100%;justify-content:center"
+          onclick="confirmUnlink()">
+          Sign out &amp; unlink WhatsApp
+        </button>
+        <button class="btn btn-outline" onclick="document.getElementById('signoutModal').classList.remove('open')"
+          style="width:100%;justify-content:center">
+          Cancel
+        </button>
       </div>
     </div>
   </div>
@@ -922,6 +948,11 @@
     });
 
     // Close modal on overlay click
+    document.getElementById('signoutModal').addEventListener('click', (e) => {
+      if (e.target === document.getElementById('signoutModal'))
+        document.getElementById('signoutModal').classList.remove('open');
+    });
+
     document.getElementById('modal').addEventListener('click', (e) => {
       if (e.target === document.getElementById('modal')) closeModal();
     });
@@ -962,6 +993,20 @@
       el.className   = `show ${type}`;
       clearTimeout(toastTimer);
       toastTimer = setTimeout(() => el.className = '', 2800);
+    }
+    async function confirmUnlink() {
+      if (!confirm('This will disconnect WhatsApp and delete the session. You will need to scan the QR code again. Are you sure?')) return;
+      try {
+        const res  = await fetch('/logout-unlink', { method: 'POST' });
+        const data = await res.json();
+        if (data.success) {
+          window.location.href = '/login';
+        } else {
+          toast('Failed to unlink', 'error');
+        }
+      } catch (e) {
+        toast('Error: ' + e.message, 'error');
+      }
     }
   </script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
