@@ -518,6 +518,7 @@
             <tr>
               <th>#</th>
               <th>Vehicle Number</th>
+              <th>Priority</th>
               <th>Status</th>
               <th>Actions</th>
             </tr>
@@ -548,6 +549,10 @@
         <input type="text" id="inputVehicle" placeholder="e.g. BOGURA-1234" />
       </div>
       <div class="form-group">
+        <label>Priority</label>
+        <input type="number" id="inputPriority" placeholder="e.g. 1 (lower = higher priority)" min="1" />
+      </div>
+      <div class="form-group">
         <label>Status</label>
         <select id="inputAccepted">
           <option value="false">Available (FALSE)</option>
@@ -557,6 +562,25 @@
       <div class="modal-actions">
         <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
         <button class="btn btn-primary" id="modalSaveBtn" onclick="saveModal()">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Edit Modal ── -->
+  <div class="overlay" id="editModal">
+    <div class="modal">
+      <h3>Edit Vehicle</h3>
+      <div class="form-group">
+        <label>Vehicle Number</label>
+        <input type="text" id="editVehicle" placeholder="e.g. BOGURA-1234" />
+      </div>
+      <div class="form-group">
+        <label>Priority</label>
+        <input type="number" id="editPriority" placeholder="e.g. 1 (lower = higher priority)" min="1" />
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-outline" onclick="closeEditModal()">Cancel</button>
+        <button class="btn btn-primary" onclick="saveEdit()">Save</button>
       </div>
     </div>
   </div>
@@ -742,11 +766,14 @@
             <td style="color:var(--muted)">${i + 1}</td>
             <td class="editable" id="cell-${i}"
                 ondblclick="startInlineEdit(${i}, this)">${escHtml(String(r.vehicle_number))}</td>
+            <td style="font-family:var(--mono);color:var(--accent)">${r.Priority ?? '—'}</td>
             <td>
               <span class="badge ${badgeClass}">${badgeLabel}</span>
             </td>
             <td>
               <div class="actions">
+                <button class="btn btn-outline btn-sm"
+                  onclick="openEditModal(${i})">✏ Edit</button>
                 <button class="btn btn-outline btn-sm"
                   onclick="toggleAccepted(${i})">${accepted ? 'Mark Available' : 'Mark Accepted'}</button>
                 <button class="btn btn-danger btn-sm"
@@ -843,6 +870,7 @@
     async function saveModal() {
       const vehicle  = document.getElementById('inputVehicle').value.trim();
       const accepted = document.getElementById('inputAccepted').value === 'true';
+      const priority = Number(document.getElementById('inputPriority').value) || 1;
 
       if (!vehicle) { toast('Vehicle number required', 'error'); return; }
 
@@ -850,7 +878,7 @@
         const res = await fetch('/api/rows', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ vehicle_number: vehicle, isAccepted: accepted }),
+          body: JSON.stringify({ vehicle_number: vehicle, isAccepted: accepted, Priority: priority }),
         });
         if (!res.ok) throw new Error((await res.json()).error);
         toast('Vehicle added ✓', 'success');
@@ -860,6 +888,38 @@
         toast(e.message, 'error');
       }
     }
+
+    // ── Edit modal ───────────────────────────────────────────────────────────────
+
+    let editingRowIndex = null;
+
+    function openEditModal(index) {
+      editingRowIndex = index;
+      const r = rows[index];
+      document.getElementById('editVehicle').value  = r.vehicle_number;
+      document.getElementById('editPriority').value = r.Priority ?? 1;
+      document.getElementById('editModal').classList.add('open');
+    }
+
+    function closeEditModal() {
+      document.getElementById('editModal').classList.remove('open');
+      editingRowIndex = null;
+    }
+
+    async function saveEdit() {
+      const vehicle  = document.getElementById('editVehicle').value.trim();
+      const priority = Number(document.getElementById('editPriority').value);
+
+      if (!vehicle) { toast('Vehicle number required', 'error'); return; }
+      if (!priority || priority < 1) { toast('Priority must be at least 1', 'error'); return; }
+
+      await patchRow(editingRowIndex, { vehicle_number: vehicle, Priority: priority });
+      closeEditModal();
+    }
+
+    document.getElementById('editModal').addEventListener('click', (e) => {
+      if (e.target === document.getElementById('editModal')) closeEditModal();
+    });
 
     // Close modal on overlay click
     document.getElementById('modal').addEventListener('click', (e) => {

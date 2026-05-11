@@ -69,11 +69,25 @@ export function deleteRow(index) {
 // ── Bot helper ────────────────────────────────────────────────────────────────
 
 export function getFirstAvailableVehicle() {
-  const row = rows.find((r) => {
-    const val = r.isAccepted;
-    return val === false || String(val).trim().toUpperCase() === "FALSE";
-  });
-  return row ? String(row.vehicle_number) : null;
+  // Filter available rows
+  const available = rows
+    .map((r, i) => ({ r, i }))
+    .filter(({ r }) => {
+      const val = r.isAccepted;
+      return val === false || String(val).trim().toUpperCase() === "FALSE";
+    });
+
+  if (!available.length) return null;
+
+  // Sort by Priority ascending (lower number = higher priority)
+  available.sort((a, b) => (Number(a.r.Priority) || 0) - (Number(b.r.Priority) || 0));
+
+  const { r, i } = available[0];
+
+  // Auto-mark as accepted in Excel
+  updateRow(i, { isAccepted: true });
+
+  return String(r.vehicle_number);
 }
 
 // ── Hot-reload watcher ────────────────────────────────────────────────────────
