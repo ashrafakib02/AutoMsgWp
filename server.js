@@ -185,7 +185,7 @@ app.get("/api/logs",   (_req, res) => res.json(getLogs()));
 app.get("/api/rows", (_req, res) => res.json(getRows()));
 
 app.post("/api/rows", (req, res) => {
-  const { vehicle_number, isAccepted, Priority } = req.body;
+  const { vehicle_number, isAccepted, Priority, Remarks } = req.body;
   if (!vehicle_number || typeof vehicle_number !== "string" || !vehicle_number.trim())
     return res.status(400).json({ error: "vehicle_number is required and must be a string" });
   if (isAccepted !== undefined && typeof isAccepted !== "boolean")
@@ -193,7 +193,7 @@ app.post("/api/rows", (req, res) => {
   if (Priority !== undefined && (typeof Priority !== "number" || Priority < 1))
     return res.status(400).json({ error: "Priority must be a positive number" });
   try {
-    addRow({ vehicle_number: vehicle_number.trim(), isAccepted: isAccepted ?? false, Priority: Priority ?? 1 });
+    addRow({ vehicle_number: vehicle_number.trim(), isAccepted: isAccepted ?? false, Priority: Priority ?? 1, Remarks: Remarks ?? "" });
     res.json({ success: true });
   } catch (err) {
     res.status(400).json({ error: err.message });
@@ -212,7 +212,7 @@ function parseIndex(param, res) {
 app.patch("/api/rows/:index", (req, res) => {
   const index = parseIndex(req.params.index, res);
   if (index === null) return;
-  const allowed = ["vehicle_number", "isAccepted", "Priority"];
+  const allowed = ["vehicle_number", "isAccepted", "Priority", "Remarks"];
   const fields  = Object.fromEntries(
     Object.entries(req.body).filter(([k]) => allowed.includes(k))
   );

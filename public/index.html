@@ -520,6 +520,7 @@
               <th>#</th>
               <th>Vehicle Number</th>
               <th>Priority</th>
+              <th>Remarks</th>
               <th>Status</th>
               <th>Actions</th>
             </tr>
@@ -554,6 +555,10 @@
         <input type="number" id="inputPriority" placeholder="e.g. 1 (lower = higher priority)" min="1" />
       </div>
       <div class="form-group">
+        <label>Remarks</label>
+        <input type="text" id="inputRemarks" placeholder="Optional remarks" />
+      </div>
+      <div class="form-group">
         <label>Status</label>
         <select id="inputAccepted">
           <option value="false">Available (FALSE)</option>
@@ -578,6 +583,10 @@
       <div class="form-group">
         <label>Priority</label>
         <input type="number" id="editPriority" placeholder="e.g. 1 (lower = higher priority)" min="1" />
+      </div>
+      <div class="form-group">
+        <label>Remarks</label>
+        <input type="text" id="editRemarks" placeholder="Optional remarks" />
       </div>
       <div class="modal-actions">
         <button class="btn btn-outline" onclick="closeEditModal()">Cancel</button>
@@ -793,6 +802,7 @@
             <td class="editable" id="cell-${i}"
                 ondblclick="startInlineEdit(${i}, this)">${escHtml(String(r.vehicle_number))}</td>
             <td style="font-family:var(--mono);color:var(--accent)">${r.Priority ?? '—'}</td>
+            <td style="font-family:var(--mono);color:var(--muted);max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.Remarks ?? '—'}</td>
             <td>
               <span class="badge ${badgeClass}">${badgeLabel}</span>
             </td>
@@ -897,6 +907,7 @@
       const vehicle  = document.getElementById('inputVehicle').value.trim();
       const accepted = document.getElementById('inputAccepted').value === 'true';
       const priority = Number(document.getElementById('inputPriority').value) || 1;
+      const remarks  = document.getElementById('inputRemarks').value.trim();
 
       if (!vehicle) { toast('Vehicle number required', 'error'); return; }
 
@@ -904,7 +915,7 @@
         const res = await fetch('/api/rows', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ vehicle_number: vehicle, isAccepted: accepted, Priority: priority }),
+          body: JSON.stringify({ vehicle_number: vehicle, isAccepted: accepted, Priority: priority, Remarks: remarks }),
         });
         if (!res.ok) throw new Error((await res.json()).error);
         toast('Vehicle added ✓', 'success');
@@ -924,6 +935,7 @@
       const r = rows[index];
       document.getElementById('editVehicle').value  = r.vehicle_number;
       document.getElementById('editPriority').value = r.Priority ?? 1;
+      document.getElementById('editRemarks').value  = r.Remarks ?? '';
       document.getElementById('editModal').classList.add('open');
     }
 
@@ -935,11 +947,12 @@
     async function saveEdit() {
       const vehicle  = document.getElementById('editVehicle').value.trim();
       const priority = Number(document.getElementById('editPriority').value);
+      const remarks  = document.getElementById('editRemarks').value.trim();
 
       if (!vehicle) { toast('Vehicle number required', 'error'); return; }
       if (!priority || priority < 1) { toast('Priority must be at least 1', 'error'); return; }
 
-      await patchRow(editingRowIndex, { vehicle_number: vehicle, Priority: priority });
+      await patchRow(editingRowIndex, { vehicle_number: vehicle, Priority: priority, Remarks: remarks });
       closeEditModal();
     }
 

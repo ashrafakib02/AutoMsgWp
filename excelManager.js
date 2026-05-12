@@ -17,7 +17,7 @@ export function setActiveFile(phone) {
   if (!fs.existsSync(newFile)) {
     const workbook = XLSX.utils.book_new();
     const sheet    = XLSX.utils.json_to_sheet([], {
-      header: ["vehicle_number", "isAccepted", "Priority"]
+      header: ["vehicle_number", "isAccepted", "Priority", "Remarks"]
     });
     XLSX.utils.book_append_sheet(workbook, sheet, "Sheet1");
     XLSX.writeFile(workbook, newFile);
