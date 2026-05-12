@@ -2,7 +2,7 @@
 
 // Returns true if a WhatsApp message looks like a delivery request.
 // Uses a simple keyword-score approach — adjust THRESHOLD to tune strictness.
-const KEYWORDS = ["date", "dealer", "code", "id", "bag", "pcc", "zone", "delivery", "detail"];
+const KEYWORDS = ["date", "dealer", "code", "id", "bag", "pcc", "zone", "delivery", "detail", "cha", "side", "site", "panchagarh", "dinajpur", "nilphamari","entry",];
 const THRESHOLD = 3;
 
 export function isDeliveryMessage(text = "") {
