@@ -464,8 +464,12 @@
   <header>
     <span style="font-size:20px">📦</span>
     <h1>Delivery Bot</h1>
+    <button id="toggleBtn" onclick="toggleBot()"
+      style="margin-left:auto;margin-right:12px;background:transparent;border:1px solid #1f2430;color:#5a607a;border-radius:6px;padding:5px 14px;font-family:Syne,sans-serif;font-size:12px;cursor:pointer;transition:all 0.2s;">
+      ⏸ Bot: ON
+    </button>
     <button onclick="document.getElementById('signoutModal').classList.add('open')"
-      style="margin-left:auto;margin-right:12px;background:transparent;border:1px solid #1f2430;color:#5a607a;border-radius:6px;padding:5px 12px;font-family:Syne,sans-serif;font-size:12px;cursor:pointer;">
+      style="margin-right:12px;background:transparent;border:1px solid #1f2430;color:#5a607a;border-radius:6px;padding:5px 12px;font-family:Syne,sans-serif;font-size:12px;cursor:pointer;">
       Sign out
     </button>
     <div class="status-pill" style="margin-left:0">
@@ -718,6 +722,7 @@
         const res  = await fetch('/api/status');
         const data = await res.json();
         console.log('[poll]', data.status, data.qr ? 'QR length:' + data.qr.length : 'no QR');
+        updateToggleBtn(data.botEnabled ?? true);
         if (data.status !== lastStatus || data.qr !== lastQR) {
           updateStatusUI(data.status, data.qr);
         }
@@ -1007,6 +1012,33 @@
       clearTimeout(toastTimer);
       toastTimer = setTimeout(() => el.className = '', 2800);
     }
+    // ── Bot toggle ────────────────────────────────────────────────────────────────
+
+    async function toggleBot() {
+      try {
+        const res  = await fetch('/api/bot/toggle', { method: 'POST' });
+        const data = await res.json();
+        updateToggleBtn(data.botEnabled);
+        toast(data.botEnabled ? 'Bot resumed ✅' : 'Bot paused ❌', 'success');
+      } catch (e) {
+        toast('Toggle failed: ' + e.message, 'error');
+      }
+    }
+
+    function updateToggleBtn(enabled) {
+      const btn = document.getElementById('toggleBtn');
+      if (!btn) return;
+      if (enabled) {
+        btn.textContent = '⏸ Bot: ON';
+        btn.style.borderColor = 'var(--accent)';
+        btn.style.color = 'var(--accent)';
+      } else {
+        btn.textContent = '▶ Bot: OFF';
+        btn.style.borderColor = 'var(--danger)';
+        btn.style.color = 'var(--danger)';
+      }
+    }
+
     async function confirmUnlink() {
       if (!confirm('This will disconnect WhatsApp and delete the session. You will need to scan the QR code again. Are you sure?')) return;
       try {

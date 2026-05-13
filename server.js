@@ -6,7 +6,7 @@ import cookieParser from "cookie-parser";
 import crypto from "crypto";
 import fs from "fs";
 import { startBot } from "./index.js";
-import { getBotState, setBotState } from "./state.js";
+import { getBotState, setBotState, isBotEnabled, setBotEnabled } from "./state.js";
 import { getLogs } from "./logger.js";
 import { getRows, addRow, updateRow, deleteRow } from "./excelManager.js";
 
@@ -179,6 +179,14 @@ app.use(express.static("public"));
 
 app.get("/api/status", (_req, res) => res.json(getBotState()));
 app.get("/api/logs",   (_req, res) => res.json(getLogs()));
+
+// ── Bot toggle ────────────────────────────────────────────────────────────────
+app.post("/api/bot/toggle", (_req, res) => {
+  const newState = !isBotEnabled();
+  setBotEnabled(newState);
+  console.log(`🤖 Bot ${newState ? "resumed ✅" : "paused ❌"} via dashboard`);
+  res.json({ botEnabled: newState });
+});
 
 // ── Excel CRUD ────────────────────────────────────────────────────────────────
 

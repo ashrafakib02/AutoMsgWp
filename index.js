@@ -140,11 +140,11 @@ export async function startBot() {
         await sock.sendMessage(jid, { text: vehicle }, { quoted: msg });
         logEvent({ vehicle, group: jid, sender });
       } else {
-        await sock.sendMessage(
-          jid,
-          { text: "No vehicle available right now." },
-          { quoted: msg }
-        );
+        // await sock.sendMessage(
+        //   jid,
+        //   { text: "No vehicle available right now." },
+        //   { quoted: msg }
+        // );
         logEvent({ vehicle: null, group: jid, sender, note: "none available" });
       }
     });
