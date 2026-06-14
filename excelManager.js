@@ -5,15 +5,11 @@ import chokidar from "chokidar";
 import fs from "fs";
 
 // ── Active file ───────────────────────────────────────────────────────────────
-// Set dynamically after WhatsApp login based on the connected phone number.
-// Falls back to vehicle_list.xlsx until a phone number is known.
-
 let FILE = "./vehicle_list.xlsx";
 
 export function setActiveFile(phone) {
   const newFile = `./vehicle_list_${phone}.xlsx`;
 
-  // Create file with headers if it doesn't exist
   if (!fs.existsSync(newFile)) {
     const workbook = XLSX.utils.book_new();
     const sheet    = XLSX.utils.json_to_sheet([], {
@@ -27,11 +23,7 @@ export function setActiveFile(phone) {
   }
 
   FILE = newFile;
-
-  // Re-attach file watcher to new file
   _attachWatcher();
-
-  // Load the new file into cache
   loadRows();
 }
 
@@ -45,15 +37,22 @@ let rows = [];
 let nextVehicleIndex = null;
 
 // ── Pre-compute next vehicle ──────────────────────────────────────────────────
+// FIX (priority): fall back to Infinity so rows with missing Priority sort last,
+// not first (Number(undefined)||0 made them all priority-0 and sort was random).
 
 function refreshNextVehicle() {
   const available = rows
     .map((r, i) => ({ r, i }))
     .filter(({ r }) => {
       const val = r.isAccepted;
-      return val === false || String(val).trim().toUpperCase() === "FALSE";
+      // Cover boolean false AND string "FALSE" / "false" from Excel re-reads
+      return val === false || val === 0 || String(val).trim().toUpperCase() === "FALSE";
     })
-    .sort((a, b) => (Number(a.r.Priority) || 0) - (Number(b.r.Priority) || 0));
+    .sort((a, b) => {
+      const pa = Number(a.r.Priority) || Infinity;
+      const pb = Number(b.r.Priority) || Infinity;
+      return pa - pb;
+    });
 
   nextVehicleIndex = available.length ? available[0].i : null;
 }
@@ -64,7 +63,8 @@ export function loadRows() {
   try {
     const workbook = XLSX.readFile(FILE);
     const sheet = workbook.Sheets[workbook.SheetNames[0]];
-    rows = XLSX.utils.sheet_to_json(sheet);
+    // defval:"" keeps empty cells from disappearing; raw:false converts types safely
+    rows = XLSX.utils.sheet_to_json(sheet, { defval: "" });
     console.log(`✅ Excel loaded: ${rows.length} rows from ${FILE}`);
   } catch (err) {
     console.error("❌ Failed to load Excel:", err.message);
@@ -79,21 +79,34 @@ export function getRows() {
 }
 
 // ── Background disk writer ────────────────────────────────────────────────────
+// FIX (watcher loop): suppress the watcher while we are writing so our own
+// write does not trigger a reload that clobbers in-memory state.
 
 let _writePending = false;
+let _suppressWatcher = false;
 
 function _scheduleWrite() {
   if (_writePending) return;
   _writePending = true;
   setImmediate(() => {
     _writePending = false;
+    _suppressWatcher = true;           // ← tell watcher to ignore next event
     try {
-      const workbook  = XLSX.readFile(FILE);
-      const sheetName = workbook.SheetNames[0];
-      workbook.Sheets[sheetName] = XLSX.utils.json_to_sheet(rows);
+      // FIX: Build workbook directly from in-memory rows instead of re-reading
+      // the file from disk. This avoids a cold disk read on every write and
+      // eliminates a race condition where a stale file could overwrite newer
+      // in-memory state if two writes were queued close together.
+      const workbook = XLSX.utils.book_new();
+      const sheet = XLSX.utils.json_to_sheet(rows, {
+        header: ["vehicle_number", "isAccepted", "Priority", "Remarks"]
+      });
+      XLSX.utils.book_append_sheet(workbook, sheet, "Sheet1");
       XLSX.writeFile(workbook, FILE);
     } catch (err) {
       console.error("❌ Failed to write Excel:", err.message);
+    } finally {
+      // Un-suppress after a short delay (longer than chokidar debounce)
+      setTimeout(() => { _suppressWatcher = false; }, 600);
     }
   });
 }
@@ -128,6 +141,7 @@ export function getFirstAvailableVehicle() {
   const index   = nextVehicleIndex;
   const vehicle = String(rows[index].vehicle_number);
 
+  // Mark accepted in memory immediately (no disk round-trip before reply)
   updateRow(index, { isAccepted: true });
 
   return vehicle;
@@ -144,6 +158,8 @@ function _attachWatcher() {
     _watcher = null;
   }
   _watcher = chokidar.watch(FILE).on("change", () => {
+    // FIX (watcher loop): ignore changes we wrote ourselves
+    if (_suppressWatcher) return;
     clearTimeout(_reloadTimer);
     _reloadTimer = setTimeout(() => {
       console.log(`🔄 ${FILE} changed on disk — reloading...`);
@@ -152,6 +168,7 @@ function _attachWatcher() {
   });
 }
 
-// Initial setup
-_attachWatcher();
-loadRows();
+// NOTE: _attachWatcher() and loadRows() are intentionally NOT called here.
+// setActiveFile() is the sole entry point — it attaches the watcher and loads
+// rows once the real per-phone file is known (after "connection open").
+// This avoids a double cold-read on first link and keeps rows consistent.

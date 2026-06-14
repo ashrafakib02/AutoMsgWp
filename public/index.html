@@ -415,7 +415,12 @@
 
     .log-entry:hover { border-color: var(--muted); }
 
-    .log-time { color: var(--muted); min-width: 170px; }
+    .log-entry { flex-wrap: wrap; }
+    .log-times { display: flex; flex-direction: column; gap: 3px; min-width: 200px; }
+    .log-time { color: var(--muted); font-size: 11px; }
+    .log-time-msg      { color: var(--accent2); }
+    .log-time-dispatch { color: var(--muted); }
+    .log-delay { color: var(--warning); font-size: 10px; font-family: var(--mono); }
     .log-vehicle { color: var(--accent); font-weight: 500; }
     .log-group { color: var(--muted); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .log-none { color: var(--danger); }
@@ -732,6 +737,13 @@
     setInterval(pollStatus, 2000);
     pollStatus();
 
+    // FIX (stale dashboard): auto-refresh rows every 3 s when on the vehicles panel
+    // so dispatches made by the bot are reflected without a manual refresh.
+    setInterval(() => {
+      const activePanel = document.querySelector('.nav-item.active')?.dataset?.panel;
+      if (activePanel === 'vehicles' && connected) loadRows();
+    }, 3000);
+
     // ───────────────────────────────────────────────────────────────────────
     // QR rendering
     // ───────────────────────────────────────────────────────────────────────
@@ -990,12 +1002,28 @@
           return;
         }
 
-        el.innerHTML = logs.map(l => `
+        el.innerHTML = logs.map(l => {
+          const fmt = iso => iso ? iso.replace('T',' ').replace('Z','').slice(0,19) : '—';
+          const msgTs   = l.messageTime ? fmt(l.messageTime) : null;
+          const dispTs  = fmt(l.time);
+          // Show delay between message arrival and dispatch (in ms)
+          const delayMs = (l.messageTime && l.time)
+            ? Math.round(new Date(l.time) - new Date(l.messageTime))
+            : null;
+          const delayStr = delayMs !== null
+            ? `<span class="log-delay">${delayMs < 1000 ? delayMs+'ms' : (delayMs/1000).toFixed(1)+'s'}</span>`
+            : '';
+          return `
           <div class="log-entry">
-            <span class="log-time">${l.time.replace('T', ' ').replace('Z','').slice(0,19)}</span>
+            <div class="log-times">
+              ${msgTs ? `<span class="log-time log-time-msg" title="Message received">📨 ${msgTs}</span>` : ''}
+              <span class="log-time log-time-dispatch" title="Vehicle dispatched">🚚 ${dispTs}</span>
+              ${delayStr}
+            </div>
             <span class="${l.vehicle ? 'log-vehicle' : 'log-none'}">${l.vehicle ?? 'none'}</span>
             <span class="log-group">${l.group ?? ''}</span>
-          </div>`).join('');
+          </div>`;
+        }).join('');
       } catch (_) {}
     }
 

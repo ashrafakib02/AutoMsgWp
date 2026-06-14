@@ -4,31 +4,36 @@ import {
   default as makeWASocket,
   useMultiFileAuthState,
   DisconnectReason,
+  Browsers,
 } from "@whiskeysockets/baileys";
 import { Boom } from "@hapi/boom";
 import P from "pino";
 import { isDeliveryMessage } from "./parser.js";
-import { loadRows, getFirstAvailableVehicle, setActiveFile } from "./excelManager.js";
+import {
+  loadRows,
+  getFirstAvailableVehicle,
+  setActiveFile,
+} from "./excelManager.js";
 import { ALLOWED_GROUPS, ADMIN } from "./config.js";
 import { logEvent } from "./logger.js";
 import { setBotState, isBotEnabled, setBotEnabled } from "./state.js";
 
 // ── Single socket instance ────────────────────────────────────────────────────
-// Keeping a reference lets us close the old socket before creating a new one,
-// preventing multiple simultaneous connections that cause reconnect loops.
-
 let currentSock = null;
-let _isStarting  = false;
+let _isStarting = false;
+let _rowsReady  = false; // true once setActiveFile() has finished loading rows
+let _senderKeyReady = false; // true once group sender-key pre-warm completes
 
 export async function startBot() {
-  // Prevent overlapping startBot calls
   if (_isStarting) {
     console.log("⚠️  startBot already in progress — skipping");
     return;
   }
   _isStarting = true;
 
-  // Close previous socket cleanly before opening a new one
+  _rowsReady = false;
+  _senderKeyReady = false;
+
   if (currentSock) {
     try { currentSock.end(); } catch (_) {}
     currentSock = null;
@@ -41,9 +46,8 @@ export async function startBot() {
       auth: state,
       logger: P({ level: "silent" }),
     });
-
     currentSock = sock;
-    _isStarting  = false;
+    _isStarting = false;
 
     sock.ev.on("creds.update", saveCreds);
 
@@ -65,16 +69,23 @@ export async function startBot() {
         setBotState({ status: "connected", qr: null, connected: true });
         console.log("✅ Bot connected");
 
-        // Get connected phone number and switch to user-specific Excel file
         try {
-          const phone = sock.user?.id?.split(":")[0] || sock.user?.id?.split("@")[0];
+          const phone =
+            sock.user?.id?.split(":")[0] || sock.user?.id?.split("@")[0];
           if (phone) {
             console.log(`📱 Connected as: ${phone}`);
-            setActiveFile(phone);
+            setActiveFile(phone); // synchronous — rows are ready before we return
+            _rowsReady = true;
           }
         } catch (err) {
           console.error("❌ Could not get phone number:", err.message);
         }
+
+        // Pre-warm the group sender-key so first real sendMessage doesn't pay
+        // the ~1s key-fetch + encrypt cost. We send a real text message then
+        // immediately delete it — this is the only Baileys call that actually
+        // triggers the full sender-key negotiation with WA servers.
+        _prewarmGroups(sock);
       }
 
       if (isOnline) {
@@ -91,9 +102,10 @@ export async function startBot() {
           connected: false,
         });
 
-        console.log(`🔴 Connection closed (${shouldReconnect ? "reconnecting" : "logged out"})`);
+        console.log(
+          `🔴 Connection closed (${shouldReconnect ? "reconnecting" : "logged out"})`,
+        );
 
-        // Only reconnect if this is still the active socket
         if (shouldReconnect && sock === currentSock) {
           currentSock = null;
           setTimeout(startBot, 3000);
@@ -106,9 +118,13 @@ export async function startBot() {
     sock.ev.on("messages.upsert", async ({ messages }) => {
       const msg = messages[0];
       if (!msg.message || msg.key.fromMe) return;
+      if (!_rowsReady) return; // rows not loaded yet — skip replayed startup messages
 
-      const jid     = msg.key.remoteJid;
-      const sender  = msg.key.participant || jid;
+      // FIX (messageTime): capture message arrival time before any async work
+      const messageTime = new Date().toISOString();
+
+      const jid    = msg.key.remoteJid;
+      const sender = msg.key.participant || jid;
       const message = msg.message;
 
       const text =
@@ -133,28 +149,61 @@ export async function startBot() {
       if (!isDeliveryMessage(text)) return;
 
       // ── Dispatch vehicle ─────────────────────────────────────────────────
+
+      // If pre-warm hasn't finished yet, wait for it so this message gets the
+      // same fast path as all subsequent ones. Cap the wait at 2s max.
+      if (!_senderKeyReady) {
+        await _waitForSenderKey(2000);
+      }
+
       const vehicle = getFirstAvailableVehicle();
       console.log("🚚 Vehicle dispatched:", vehicle ?? "none available");
 
       if (vehicle) {
         await sock.sendMessage(jid, { text: vehicle }, { quoted: msg });
-        logEvent({ vehicle, group: jid, sender });
+        logEvent({ vehicle, group: jid, sender, messageTime });
       } else {
-        // await sock.sendMessage(
-        //   jid,
-        //   { text: "No vehicle available right now." },
-        //   { quoted: msg }
-        // );
-        logEvent({ vehicle: null, group: jid, sender, note: "none available" });
+        logEvent({ vehicle: null, group: jid, sender, messageTime, note: "none available" });
       }
     });
-
   } catch (err) {
     console.error("❌ startBot error:", err.message);
-    _isStarting  = false;
+    _isStarting = false;
     currentSock = null;
-    setTimeout(startBot, 5000); // retry after error
+    setTimeout(startBot, 5000);
   }
+}
+
+// ── Sender-key pre-warmer ─────────────────────────────────────────────────────
+// Sends a message to each allowed group then immediately deletes it.
+// This forces Baileys to complete the full sender-key negotiation with WA
+// servers in the background so the first real reply is as fast as all others.
+
+async function _prewarmGroups(sock) {
+  for (const groupJid of ALLOWED_GROUPS) {
+    try {
+      const sent = await sock.sendMessage(groupJid, { text: "\u200b" }); // zero-width space
+      if (sent?.key) {
+        await sock.sendMessage(groupJid, { delete: sent.key });
+      }
+      console.log(`🔑 Sender-key pre-warmed for ${groupJid}`);
+    } catch (err) {
+      console.warn(`⚠️  Pre-warm failed for ${groupJid}:`, err.message);
+    }
+  }
+  _senderKeyReady = true;
+}
+
+// Waits until _senderKeyReady is true or the timeout elapses.
+function _waitForSenderKey(timeoutMs) {
+  return new Promise((resolve) => {
+    const deadline = Date.now() + timeoutMs;
+    const check = () => {
+      if (_senderKeyReady || Date.now() >= deadline) return resolve();
+      setTimeout(check, 50);
+    };
+    check();
+  });
 }
 
 // ── Admin command handler ──────────────────────────────────────────────────────
@@ -162,8 +211,18 @@ export async function startBot() {
 async function handleAdminCommand(sock, jid, msg, cmd) {
   const reply = (text) => sock.sendMessage(jid, { text }, { quoted: msg });
 
-  if (cmd === "/status") return reply(`Bot: ${isBotEnabled() ? "ON ✅" : "OFF ❌"}`);
-  if (cmd === "/pause")  { setBotEnabled(false); return reply("Bot paused ❌"); }
-  if (cmd === "/resume") { setBotEnabled(true);  return reply("Bot resumed ✅"); }
-  if (cmd === "/reload") { loadRows(); return reply("Excel reloaded 🔄"); }
+  if (cmd === "/status")
+    return reply(`Bot: ${isBotEnabled() ? "ON ✅" : "OFF ❌"}`);
+  if (cmd === "/pause") {
+    setBotEnabled(false);
+    return reply("Bot paused ❌");
+  }
+  if (cmd === "/resume") {
+    setBotEnabled(true);
+    return reply("Bot resumed ✅");
+  }
+  if (cmd === "/reload") {
+    loadRows();
+    return reply("Excel reloaded 🔄");
+  }
 }

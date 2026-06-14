@@ -5,10 +5,21 @@
 const KEYWORDS = ["date", "dealer", "code", "id", "bag", "pcc", "zone", "delivery", "detail", "cha", "side", "site", "panchagarh", "dinajpur", "nilphamari","entry",];
 const THRESHOLD = 3;
 
+// export function isDeliveryMessage(text = "") {
+//   const t = text.toLowerCase();
+//   const score = KEYWORDS.reduce((acc, kw) => acc + (t.includes(kw) ? 1 : 0), 0);
+//   return score >= THRESHOLD;
+// }
 export function isDeliveryMessage(text = "") {
   const t = text.toLowerCase();
-  const score = KEYWORDS.reduce((acc, kw) => acc + (t.includes(kw) ? 1 : 0), 0);
-  return score >= THRESHOLD;
+  let score = 0;
+  for (const kw of KEYWORDS) {
+    if (t.includes(kw)) {
+      score++;
+      if (score >= THRESHOLD) return true; // exit early
+    }
+  }
+  return false;
 }
 
 // ── Field helpers ─────────────────────────────────────────────────────────────

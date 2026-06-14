@@ -3,6 +3,8 @@
 
 const logs = [];
 
+// messageTime: ISO timestamp of when the incoming WhatsApp message arrived
+// time:        ISO timestamp of when the vehicle was dispatched
 export function logEvent(data) {
   logs.push({ time: new Date().toISOString(), ...data });
   if (logs.length > 100) logs.shift();
