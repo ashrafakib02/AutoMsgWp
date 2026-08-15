@@ -5,6 +5,7 @@ import {
   useMultiFileAuthState,
   DisconnectReason,
   Browsers,
+  fetchLatestBaileysVersion,
 } from "@whiskeysockets/baileys";
 import { Boom } from "@hapi/boom";
 import P from "pino";
@@ -21,7 +22,7 @@ import { setBotState, isBotEnabled, setBotEnabled } from "./state.js";
 // ── Single socket instance ────────────────────────────────────────────────────
 let currentSock = null;
 let _isStarting = false;
-let _rowsReady  = false; // true once setActiveFile() has finished loading rows
+let _rowsReady = false; // true once setActiveFile() has finished loading rows
 let _senderKeyReady = false; // true once group sender-key pre-warm completes
 
 export async function startBot() {
@@ -35,15 +36,18 @@ export async function startBot() {
   _senderKeyReady = false;
 
   if (currentSock) {
-    try { currentSock.end(); } catch (_) {}
+    try {
+      currentSock.end();
+    } catch (_) {}
     currentSock = null;
   }
 
   try {
     const { state, saveCreds } = await useMultiFileAuthState("auth");
-
+    const { version, isLatest } = await fetchLatestBaileysVersion();
     const sock = makeWASocket({
       auth: state,
+      version,
       logger: P({ level: "silent" }),
     });
     currentSock = sock;
@@ -123,7 +127,7 @@ export async function startBot() {
       // FIX (messageTime): capture message arrival time before any async work
       const messageTime = new Date().toISOString();
 
-      const jid    = msg.key.remoteJid;
+      const jid = msg.key.remoteJid;
       const sender = msg.key.participant || jid;
       const message = msg.message;
 
@@ -163,7 +167,13 @@ export async function startBot() {
         await sock.sendMessage(jid, { text: vehicle }, { quoted: msg });
         logEvent({ vehicle, group: jid, sender, messageTime });
       } else {
-        logEvent({ vehicle: null, group: jid, sender, messageTime, note: "none available" });
+        logEvent({
+          vehicle: null,
+          group: jid,
+          sender,
+          messageTime,
+          note: "none available",
+        });
       }
     });
   } catch (err) {
@@ -178,11 +188,49 @@ export async function startBot() {
 // Sends a message to each allowed group then immediately deletes it.
 // This forces Baileys to complete the full sender-key negotiation with WA
 // servers in the background so the first real reply is as fast as all others.
+const PREWARM_MESSAGES = [
+
+  "😎",
+
+  "😀",
+
+  "😇",
+
+  "🧐",
+
+  "🤓",
+
+  "🙋🏻‍♂️",
+
+  "🥱",
+
+  "22-6624",
+
+  "20-6263",
+
+  "22-0088",
+
+  "11-1223",
+
+  "24-3827",
+];
+
+
+
+function _randomPrewarmMessage() {
+
+  return PREWARM_MESSAGES[Math.floor(Math.random() * PREWARM_MESSAGES.length)];
+
+}
+
 
 async function _prewarmGroups(sock) {
   for (const groupJid of ALLOWED_GROUPS) {
     try {
-      const sent = await sock.sendMessage(groupJid, { text: "\u200b" }); // zero-width space
+      const sentMessage =_randomPrewarmMessage();
+      console.log(sentMessage);
+      const sent = await sock.sendMessage(groupJid, { text: sentMessage });
+
       if (sent?.key) {
         await sock.sendMessage(groupJid, { delete: sent.key });
       }
