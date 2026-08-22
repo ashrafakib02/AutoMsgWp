@@ -188,49 +188,11 @@ export async function startBot() {
 // Sends a message to each allowed group then immediately deletes it.
 // This forces Baileys to complete the full sender-key negotiation with WA
 // servers in the background so the first real reply is as fast as all others.
-const PREWARM_MESSAGES = [
-
-  "😎",
-
-  "😀",
-
-  "😇",
-
-  "🧐",
-
-  "🤓",
-
-  "🙋🏻‍♂️",
-
-  "🥱",
-
-  "22-6624",
-
-  "20-6263",
-
-  "22-0088",
-
-  "11-1223",
-
-  "24-3827",
-];
-
-
-
-function _randomPrewarmMessage() {
-
-  return PREWARM_MESSAGES[Math.floor(Math.random() * PREWARM_MESSAGES.length)];
-
-}
-
 
 async function _prewarmGroups(sock) {
   for (const groupJid of ALLOWED_GROUPS) {
     try {
-      const sentMessage =_randomPrewarmMessage();
-      console.log(sentMessage);
-      const sent = await sock.sendMessage(groupJid, { text: sentMessage });
-
+      const sent = await sock.sendMessage(groupJid, { text: "\u200b" }); // zero-width space
       if (sent?.key) {
         await sock.sendMessage(groupJid, { delete: sent.key });
       }
