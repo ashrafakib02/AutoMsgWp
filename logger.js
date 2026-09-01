@@ -13,3 +13,8 @@ export function logEvent(data) {
 export function getLogs() {
   return [...logs].reverse(); // newest first
 }
+
+
+export function clearLogs() {
+  logs.length = 0;
+}

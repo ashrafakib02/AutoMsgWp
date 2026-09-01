@@ -163,6 +163,8 @@ app.post("/logout-unlink", (req, res) => {
   } catch (err) {
     console.error("❌ Failed to delete auth folder:", err.message);
   }
+  // clearLogs();
+  // console.log("🧹 Activity log cleared");
   sessions.delete(req.cookies?.session);
   res.clearCookie("session");
   res.json({ success: true });
