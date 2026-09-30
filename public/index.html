@@ -544,6 +544,9 @@
     <!-- Logs panel -->
     <div id="logs-panel" class="panel" style="display:none">
       <p class="section-title">Recent Dispatches</p>
+      <div class="toolbar">
+        <button class="btn btn-danger" onclick="clearAllLogs()">🗑 Clear All</button>
+      </div>
       <div id="logList" class="log-list">
         <div class="empty-state">No activity yet.</div>
       </div>
@@ -1025,6 +1028,18 @@
           </div>`;
         }).join('');
       } catch (_) {}
+    }
+
+    async function clearAllLogs() {
+      if (!confirm('Clear all activity logs?')) return;
+      try {
+        const res = await fetch('/api/logs', { method: 'DELETE' });
+        if (!res.ok) throw new Error(res.status);
+        loadLogs();
+        toast('Activity log cleared');
+      } catch (e) {
+        toast('Clear failed: ' + e.message, 'error');
+      }
     }
 
     // ───────────────────────────────────────────────────────────────────────

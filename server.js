@@ -7,7 +7,7 @@ import crypto from "crypto";
 import fs from "fs";
 import { startBot } from "./index.js";
 import { getBotState, setBotState, isBotEnabled, setBotEnabled } from "./state.js";
-import { getLogs } from "./logger.js";
+import { getLogs, clearLogs } from "./logger.js";
 import { getRows, addRow, updateRow, deleteRow } from "./excelManager.js";
 
 const app = express();
@@ -181,6 +181,7 @@ app.use(express.static("public"));
 
 app.get("/api/status", (_req, res) => res.json(getBotState()));
 app.get("/api/logs",   (_req, res) => res.json(getLogs()));
+app.delete("/api/logs", (_req, res) => { clearLogs(); res.json({ success: true }); });
 
 // ── Bot toggle ────────────────────────────────────────────────────────────────
 app.post("/api/bot/toggle", (_req, res) => {
